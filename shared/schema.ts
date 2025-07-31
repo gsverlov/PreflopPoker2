@@ -1,4 +1,7 @@
 import { z } from "zod";
+import { pgTable, serial, text, integer, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { relations } from "drizzle-orm";
+import { createInsertSchema } from "drizzle-zod";
 
 export const cardRanks = ['A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2'] as const;
 export const cardSuits = ['♠', '♥', '♦', '♣'] as const;
@@ -56,6 +59,68 @@ export const positionStatsSchema = z.object({
   foldTo3BetRange: z.string(),
   proTip: z.string()
 });
+
+// Database Tables
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
+  username: text("username").notNull().unique(),
+  email: text("email").notNull().unique(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const handHistories = pgTable("hand_histories", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id),
+  cards: jsonb("cards").notNull(), // Array of Card objects
+  gameContext: jsonb("game_context").notNull(), // GameContext object
+  handAnalysis: jsonb("hand_analysis").notNull(), // HandAnalysis object
+  actualAction: text("actual_action"), // What the user actually did
+  result: text("result"), // WIN, LOSE, FOLD
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const userPreferences = pgTable("user_preferences", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  preferredStrategy: text("preferred_strategy").default("GTO"), // GTO, LAG, TAG, etc.
+  riskTolerance: integer("risk_tolerance").default(5), // 1-10 scale
+  preferredPositions: jsonb("preferred_positions"), // Array of preferred positions
+  stakesLevel: text("stakes_level").default("MICRO"), // MICRO, LOW, MID, HIGH
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Relations
+export const usersRelations = relations(users, ({ many }) => ({
+  handHistories: many(handHistories),
+  preferences: many(userPreferences),
+}));
+
+export const handHistoriesRelations = relations(handHistories, ({ one }) => ({
+  user: one(users, {
+    fields: [handHistories.userId],
+    references: [users.id],
+  }),
+}));
+
+export const userPreferencesRelations = relations(userPreferences, ({ one }) => ({
+  user: one(users, {
+    fields: [userPreferences.userId],
+    references: [users.id],
+  }),
+}));
+
+// Insert Schemas
+export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
+export const insertHandHistorySchema = createInsertSchema(handHistories).omit({ id: true, createdAt: true });
+export const insertUserPreferencesSchema = createInsertSchema(userPreferences).omit({ id: true, updatedAt: true });
+
+// Types
+export type User = typeof users.$inferSelect;
+export type InsertUser = z.infer<typeof insertUserSchema>;
+export type HandHistory = typeof handHistories.$inferSelect;
+export type InsertHandHistory = z.infer<typeof insertHandHistorySchema>;
+export type UserPreferences = typeof userPreferences.$inferSelect;
+export type InsertUserPreferences = z.infer<typeof insertUserPreferencesSchema>;
 
 export type Card = z.infer<typeof cardSchema>;
 export type PlayerAction = z.infer<typeof playerActionSchema>;

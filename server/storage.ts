@@ -1,11 +1,17 @@
-import { type HandAnalysis, type PositionStats, type PositionCategory } from "@shared/schema";
+import { type HandAnalysis, type PositionStats, type PositionCategory, type HandHistory, type InsertHandHistory, type User, type InsertUser, handHistories, users } from "@shared/schema";
+import { db } from "./db";
+import { eq, desc, and } from "drizzle-orm";
 
 export interface IStorage {
   analyzeHand(cards: any[], context: any): Promise<HandAnalysis>;
   getPositionStats(position: PositionCategory): Promise<PositionStats>;
+  saveHandHistory(handHistory: InsertHandHistory): Promise<HandHistory>;
+  getHandHistory(userId?: number, limit?: number): Promise<HandHistory[]>;
+  createUser(insertUser: InsertUser): Promise<User>;
+  getUserByUsername(username: string): Promise<User | undefined>;
 }
 
-export class MemStorage implements IStorage {
+export class DatabaseStorage implements IStorage {
   constructor() {}
 
   async analyzeHand(cards: any[], context: any): Promise<HandAnalysis> {
@@ -68,6 +74,47 @@ export class MemStorage implements IStorage {
 
     return stats[position];
   }
+
+  async saveHandHistory(handHistory: InsertHandHistory): Promise<HandHistory> {
+    const [result] = await db
+      .insert(handHistories)
+      .values(handHistory)
+      .returning();
+    return result;
+  }
+
+  async getHandHistory(userId?: number, limit: number = 50): Promise<HandHistory[]> {
+    if (userId) {
+      return await db
+        .select()
+        .from(handHistories)
+        .where(eq(handHistories.userId, userId))
+        .orderBy(desc(handHistories.createdAt))
+        .limit(limit);
+    }
+    
+    return await db
+      .select()
+      .from(handHistories)
+      .orderBy(desc(handHistories.createdAt))
+      .limit(limit);
+  }
+
+  async createUser(insertUser: InsertUser): Promise<User> {
+    const [user] = await db
+      .insert(users)
+      .values(insertUser)
+      .returning();
+    return user;
+  }
+
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.username, username));
+    return user || undefined;
+  }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();

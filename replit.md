@@ -2,7 +2,7 @@
 
 ## Overview
 
-This is a web-based poker strategy advisor that helps players make optimal decisions in Texas Hold'em poker. The application provides real-time hand analysis, position-based strategy recommendations, and statistical insights to improve poker gameplay. Built with a modern React frontend and Express backend, it features an intuitive interface for selecting cards, positions, and game contexts, then delivers actionable advice based on poker theory and mathematical analysis.
+This is a comprehensive poker strategy advisor that helps players make optimal decisions in Texas Hold'em poker. The application provides real-time hand analysis, position-based strategy recommendations, detailed player action tracking, and persistent hand history storage. Built with a modern React frontend and Express backend with PostgreSQL database, it features an intuitive tabbed interface for analyzing hands and reviewing historical play patterns. The system delivers actionable advice based on poker theory, mathematical analysis, and supports 2-9 player tables with exact betting amounts in big blinds.
 
 ## User Preferences
 
@@ -32,15 +32,18 @@ Preferred communication style: Simple, everyday language.
 - **Action Context**: Considers previous betting action to refine recommendations
 
 ### Data Storage Strategy
-- **Current**: In-memory storage with mock data for development
-- **Planned**: Drizzle ORM with PostgreSQL for persistent data storage
-- **Schema**: Shared TypeScript schemas with Zod validation for type safety
-- **Migration**: Drizzle-kit for database schema management
+- **Database**: PostgreSQL with Drizzle ORM for persistent data storage and type safety
+- **Schema**: Comprehensive database schema with users and hand_histories tables
+- **Storage Interface**: DatabaseStorage class implementing IStorage for all CRUD operations
+- **Migration**: Drizzle-kit for database schema management with `npm run db:push`
+- **Demo Data**: Pre-created demo user (ID: 1) for testing and development
 
 ### UI/UX Design Decisions
 - **Card Selection**: Interactive card picker with rank and suit selection
 - **Position Selector**: Visual position categories with stack size controls
 - **Real-time Analysis**: Instant feedback as users modify inputs
+- **Tabbed Interface**: Hand Analyzer and Hand History sections for organized workflow
+- **Hand History Tracking**: Persistent storage and display of analyzed hands with results
 - **Dark Theme**: Poker table aesthetic with green accents and dark surfaces
 - **Responsive**: Mobile-first design with tablet and desktop optimizations
 
