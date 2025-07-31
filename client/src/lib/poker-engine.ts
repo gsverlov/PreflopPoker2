@@ -66,11 +66,12 @@ export class PokerEngine {
     return { strength: 'TRASH', winRate: 35, playabilityScore: 2.0 };
   }
   
-  // Position-based decision making
+  // Enhanced decision making with detailed player actions
   static getRecommendation(cards: Card[], context: GameContext): HandAnalysis['recommendation'] {
     const handEval = this.evaluateHandStrength(cards);
     const position = this.getPositionCategory(context.position);
     const stackCategory = this.getStackCategory(context.stackSize);
+    const actionSummary = this.analyzePlayerActions(context);
     
     let primaryAction: Action = 'FOLD';
     let actionSize = '';
@@ -82,90 +83,142 @@ export class PokerEngine {
       { action: 'RAISE' as Action, percentage: 0 }
     ];
     
-    // Decision tree based on hand strength and position
+    // Calculate required amount to call
+    const amountToCall = actionSummary.maxBet - actionSummary.currentBet;
+    const potOdds = amountToCall / (context.potSize + amountToCall);
+    const activePlayers = actionSummary.playersRemaining;
+    
+    // Decision tree based on hand strength, position, and action
     if (handEval.strength === 'PREMIUM') {
-      primaryAction = 'RAISE';
-      actionSize = context.previousAction?.includes('RAISE') || context.previousAction?.includes('BET') ? '3-4x BB' : '2.5-3x BB';
-      confidence = 90;
-      reasoning = [
-        `Premium hand (${cards[0].rank}${cards[1].rank}) - top tier starting hand`,
-        `${position} allows for aggressive play`,
-        `Stack depth (${context.stackSize}BB) supports post-flop play`
-      ];
+      if (actionSummary.raisersCount >= 2) {
+        primaryAction = actionSummary.maxBet > context.stackSize * 0.3 ? 'ALL_IN' : 'RAISE';
+        actionSize = primaryAction === 'RAISE' ? `${Math.min(actionSummary.maxBet * 2.5, context.stackSize)}BB` : '';
+        confidence = 95;
+        reasoning = [
+          `Premium hand (${cards[0].rank}${cards[1].rank}) - excellent in multiway pot`,
+          `Multiple raisers indicate strong opposition but hand can handle`,
+          `${activePlayers} players active - value betting essential`
+        ];
+      } else if (actionSummary.raisersCount === 1) {
+        primaryAction = 'RAISE';
+        actionSize = `${Math.min(actionSummary.maxBet * 3, context.stackSize)}BB`;
+        confidence = 90;
+        reasoning = [
+          `Premium hand against single raiser`,
+          `Re-raise for value and protection`,
+          `Stack depth (${context.stackSize}BB) allows aggression`
+        ];
+      } else {
+        primaryAction = 'RAISE';
+        actionSize = `${Math.min(context.bigBlind * 3, context.stackSize)}BB`;
+        confidence = 90;
+        reasoning = [
+          `Premium hand - standard value raise`,
+          `${position} provides good control`,
+          `Build pot with strongest holdings`
+        ];
+      }
       alternatives = [
-        { action: 'RAISE', percentage: 90 },
+        { action: primaryAction, percentage: 90 },
         { action: 'CALL', percentage: 8 },
         { action: 'FOLD', percentage: 2 }
       ];
     } else if (handEval.strength === 'STRONG') {
-      if (position === 'Late Position' || position === 'Middle Position') {
-        primaryAction = 'RAISE';
-        actionSize = '2.5-3x BB';
-        confidence = 80;
+      if (actionSummary.raisersCount >= 2) {
+        primaryAction = position === 'Late Position' ? 'CALL' : 'FOLD';
+        confidence = position === 'Late Position' ? 70 : 60;
         reasoning = [
-          `Strong hand with good playability`,
-          `${position} provides positional advantage`,
-          `Good spot to build pot with strong holding`
+          `Strong hand but multiple raisers ahead`,
+          `${position} ${position === 'Late Position' ? 'allows call' : 'makes call difficult'}`,
+          `Pot odds: ${(potOdds * 100).toFixed(1)}% - ${potOdds < 0.25 ? 'favorable' : 'marginal'}`
+        ];
+      } else if (actionSummary.raisersCount === 1) {
+        primaryAction = position === 'Early Position' ? 'CALL' : 'RAISE';
+        actionSize = primaryAction === 'RAISE' ? `${Math.min(actionSummary.maxBet * 2.5, context.stackSize)}BB` : '';
+        confidence = 75;
+        reasoning = [
+          `Strong hand against single raiser`,
+          `${position} ${position === 'Early Position' ? 'suggests caution' : 'allows aggression'}`,
+          `Good playability post-flop`
         ];
       } else {
-        primaryAction = context.previousAction ? 'CALL' : 'RAISE';
-        actionSize = primaryAction === 'RAISE' ? '2.5x BB' : '';
-        confidence = 70;
+        primaryAction = 'RAISE';
+        actionSize = `${Math.min(context.bigBlind * 2.5, context.stackSize)}BB`;
+        confidence = 80;
         reasoning = [
-          `Strong hand but ${position} requires caution`,
-          context.previousAction ? 'Previous action limits aggression' : 'No action before allows for value raise'
+          `Strong hand with no action`,
+          `${position} provides good control`,
+          `Value raise opportunity`
         ];
       }
       alternatives = [
-        { action: primaryAction, percentage: 70 },
-        { action: primaryAction === 'RAISE' ? 'CALL' : 'RAISE', percentage: 25 },
+        { action: primaryAction, percentage: 75 },
+        { action: primaryAction === 'RAISE' ? 'CALL' : 'RAISE', percentage: 20 },
         { action: 'FOLD', percentage: 5 }
       ];
     } else if (handEval.strength === 'GOOD') {
-      if (position === 'Late Position' && !context.previousAction) {
-        primaryAction = 'RAISE';
-        actionSize = '2.5x BB';
-        confidence = 75;
-        reasoning = [
-          `Decent hand in excellent position`,
-          `No previous action allows for stealing blinds`,
-          `Good post-flop playability`
-        ];
-      } else if (context.previousAction) {
-        primaryAction = 'CALL';
-        confidence = 60;
-        reasoning = [
-          `Good hand but facing action`,
-          `Pot odds justify a call`,
-          `Position consideration in play`
-        ];
+      if (actionSummary.raisersCount >= 1) {
+        if (potOdds < 0.2 && position === 'Late Position') {
+          primaryAction = 'CALL';
+          confidence = 65;
+          reasoning = [
+            `Good hand with excellent pot odds (${(potOdds * 100).toFixed(1)}%)`,
+            `Late position provides post-flop advantage`,
+            `${activePlayers} players - speculative value`
+          ];
+        } else {
+          primaryAction = 'FOLD';
+          confidence = 70;
+          reasoning = [
+            `Good hand but facing aggression`,
+            `Poor pot odds (${(potOdds * 100).toFixed(1)}%) for speculative call`,
+            `${position} doesn't compensate for poor odds`
+          ];
+        }
       } else {
-        primaryAction = position === 'Early Position' ? 'FOLD' : 'CALL';
-        confidence = 55;
+        primaryAction = position === 'Early Position' ? 'CALL' : 'RAISE';
+        actionSize = primaryAction === 'RAISE' ? `${Math.min(context.bigBlind * 2.5, context.stackSize)}BB` : '';
+        confidence = position === 'Late Position' ? 75 : 60;
         reasoning = [
-          `Marginal spot with good hand`,
-          `${position} influences decision`,
-          `Stack depth allows for speculation`
+          `Good hand with no action`,
+          `${position} ${position === 'Late Position' ? 'excellent for steal' : 'requires caution'}`,
+          `Decent playability post-flop`
         ];
       }
       alternatives = [
-        { action: primaryAction, percentage: 60 },
-        { action: primaryAction === 'FOLD' ? 'CALL' : 'FOLD', percentage: 30 },
+        { action: primaryAction, percentage: 65 },
+        { action: primaryAction === 'FOLD' ? 'CALL' : 'FOLD', percentage: 25 },
         { action: 'RAISE', percentage: 10 }
       ];
     } else {
-      primaryAction = 'FOLD';
-      confidence = 80;
-      reasoning = [
-        handEval.strength === 'MARGINAL' ? 'Marginal hand strength' : 'Weak hand - not profitable long-term',
-        context.previousAction ? 'Facing action with weak holding' : 'Poor risk/reward ratio',
-        `${position} doesn't provide enough value`
-      ];
-      alternatives = [
-        { action: 'FOLD', percentage: 85 },
-        { action: 'CALL', percentage: 15 },
-        { action: 'RAISE', percentage: 0 }
-      ];
+      if (actionSummary.raisersCount === 0 && position === 'Late Position' && activePlayers <= 3) {
+        primaryAction = 'RAISE';
+        actionSize = `${Math.min(context.bigBlind * 2.2, context.stackSize)}BB`;
+        confidence = 60;
+        reasoning = [
+          `Weak hand but excellent steal spot`,
+          `Late position vs ${activePlayers} players`,
+          `Fold equity likely high`
+        ];
+        alternatives = [
+          { action: 'RAISE', percentage: 60 },
+          { action: 'FOLD', percentage: 40 },
+          { action: 'CALL', percentage: 0 }
+        ];
+      } else {
+        primaryAction = 'FOLD';
+        confidence = 85;
+        reasoning = [
+          handEval.strength === 'MARGINAL' ? 'Marginal hand strength' : 'Weak hand - not profitable',
+          actionSummary.raisersCount > 0 ? `Facing ${actionSummary.raisersCount} raiser(s)` : 'Poor risk/reward even unopened',
+          `${position} with ${activePlayers} players - insufficient value`
+        ];
+        alternatives = [
+          { action: 'FOLD', percentage: 85 },
+          { action: 'CALL', percentage: 15 },
+          { action: 'RAISE', percentage: 0 }
+        ];
+      }
     }
     
     return {
@@ -174,6 +227,42 @@ export class PokerEngine {
       confidence,
       reasoning,
       alternatives
+    };
+  }
+
+  // Analyze player actions to get betting summary
+  static analyzePlayerActions(context: GameContext) {
+    const actions = context.playerActions;
+    let maxBet = context.bigBlind; // Big blind is minimum bet
+    let raisersCount = 0;
+    let playersRemaining = context.totalPlayers;
+    let currentBet = 0; // What we've invested so far
+    let potContribution = 0;
+
+    // Process each action
+    actions.forEach(action => {
+      if (action.action === 'FOLD') {
+        playersRemaining--;
+      } else if (action.action === 'RAISE') {
+        raisersCount++;
+        maxBet = Math.max(maxBet, action.amount);
+      } else if (action.action === 'ALL_IN') {
+        raisersCount++;
+        maxBet = Math.max(maxBet, action.amount);
+      } else if (action.action === 'CALL') {
+        // Calling matches the current max bet
+      }
+      potContribution += action.amount;
+    });
+
+    return {
+      maxBet,
+      raisersCount,
+      playersRemaining,
+      currentBet,
+      potContribution,
+      hasAction: actions.length > 0,
+      lastAction: actions.length > 0 ? actions[actions.length - 1] : null
     };
   }
   

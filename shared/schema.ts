@@ -13,12 +13,21 @@ export const cardSchema = z.object({
   suit: z.enum(cardSuits)
 });
 
+export const playerActionSchema = z.object({
+  position: z.enum(positions),
+  action: z.enum(['FOLD', 'CHECK', 'CALL', 'RAISE', 'ALL_IN']),
+  amount: z.number().min(0), // in big blinds
+  stackSize: z.number().min(0) // remaining stack after action
+});
+
 export const gameContextSchema = z.object({
   position: z.enum(positions),
   stackSize: z.number().min(1).max(500), // in big blinds
-  previousAction: z.enum(['FOLD', 'CHECK', 'CALL', 'RAISE_2BB', 'RAISE_3BB', 'RAISE_4BB', '3BET', '4BET']).optional(),
+  totalPlayers: z.number().min(2).max(9).default(6),
+  playerActions: z.array(playerActionSchema).default([]),
   potSize: z.number().default(1.5), // in big blinds
-  playersInHand: z.number().min(2).max(9).default(6)
+  bigBlind: z.number().default(1),
+  isHeadsUp: z.boolean().default(false)
 });
 
 export const handAnalysisSchema = z.object({
@@ -49,6 +58,7 @@ export const positionStatsSchema = z.object({
 });
 
 export type Card = z.infer<typeof cardSchema>;
+export type PlayerAction = z.infer<typeof playerActionSchema>;
 export type GameContext = z.infer<typeof gameContextSchema>;
 export type HandAnalysis = z.infer<typeof handAnalysisSchema>;
 export type PositionStats = z.infer<typeof positionStatsSchema>;

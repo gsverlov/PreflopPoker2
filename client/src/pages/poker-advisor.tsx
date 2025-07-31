@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Card, GameContext, HandAnalysis, PositionStats, Position } from "@shared/schema";
+import { Card, GameContext, HandAnalysis, PositionStats, Position, PlayerAction } from "@shared/schema";
 import { PokerEngine } from "@/lib/poker-engine";
 import { HandSelector } from "@/components/hand-selector";
 import { PositionSelector } from "@/components/position-selector";
-import { ActionContext } from "@/components/action-context";
+import { PlayerActions } from "@/components/player-actions";
 import { RecommendationPanel } from "@/components/recommendation-panel";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Spade } from "lucide-react";
@@ -13,7 +13,8 @@ export default function PokerAdvisor() {
   const [selectedCards, setSelectedCards] = useState<(Card | null)[]>([null, null]);
   const [position, setPosition] = useState<Position>('BTN');
   const [stackSize, setStackSize] = useState<number>(75);
-  const [previousAction, setPreviousAction] = useState<string | null>(null);
+  const [totalPlayers, setTotalPlayers] = useState<number>(6);
+  const [playerActions, setPlayerActions] = useState<PlayerAction[]>([]);
   const [analysis, setAnalysis] = useState<HandAnalysis | null>(null);
   
   // Get position category for stats query
@@ -48,9 +49,11 @@ export default function PokerAdvisor() {
       const context: GameContext = {
         position,
         stackSize,
-        previousAction: previousAction as any,
-        potSize: 1.5,
-        playersInHand: 6
+        totalPlayers,
+        playerActions,
+        potSize: 1.5 + playerActions.reduce((sum, action) => sum + action.amount, 0),
+        bigBlind: 1,
+        isHeadsUp: totalPlayers === 2
       };
 
       try {
@@ -74,7 +77,7 @@ export default function PokerAdvisor() {
     } else {
       setAnalysis(null);
     }
-  }, [selectedCards, position, stackSize, previousAction]);
+  }, [selectedCards, position, stackSize, totalPlayers, playerActions]);
 
   const handleCardSelect = (card: Card, index: number) => {
     const newCards = [...selectedCards];
@@ -122,9 +125,12 @@ export default function PokerAdvisor() {
               onStackSizeChange={setStackSize}
             />
             
-            <ActionContext
-              previousAction={previousAction}
-              onActionSelect={setPreviousAction}
+            <PlayerActions
+              totalPlayers={totalPlayers}
+              onTotalPlayersChange={setTotalPlayers}
+              playerActions={playerActions}
+              onPlayerActionsChange={setPlayerActions}
+              yourPosition={position}
             />
           </div>
           
@@ -132,7 +138,7 @@ export default function PokerAdvisor() {
           <div className="space-y-6">
             <RecommendationPanel
               analysis={analysis}
-              positionStats={positionStats}
+              positionStats={positionStats || null}
               isLoading={analyzeMutation.isPending}
             />
           </div>
